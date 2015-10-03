@@ -57,6 +57,12 @@ def add_legend(view, label_str, color):
 	hspacer2.stretch = (4, 1)
 	boxgrid.add_widget(hspacer2, row=0, col=1)
 
+##################### check mouse event is in view.camera ##################
+def is_in_view(event_pos, cam):
+	is_in_xrange = event_pos[0] < cam._viewbox.pos[0] + cam._viewbox.size[0] 
+	is_in_yrange = event_pos[1] < cam._viewbox.pos[1] + cam._viewbox.size[1]
+	return is_in_xrange and is_in_yrange
+
 ################## scalar field generator ##################
 
 ## Define a scalar field from which we will generate an isosurface
@@ -338,28 +344,28 @@ def on_mouse_press(event):
 		mod = [key.name for key in event.modifiers]
 		if mod == ['Control']:
 			print(mod,button,pos)
-			cam = view2.camera
-			# print cam._viewbox.size
-			# print cam._viewbox.pos
-			# print cam._viewbox.margin
-			center_x = cam._viewbox.pos[0] + cam._viewbox.size[0]/2
-			center_y = cam._viewbox.pos[1] + cam._viewbox.size[1]/2
-			print str(cam.get_state())
+			cam2 = view2.camera
+			# print cam2._viewbox.size
+			# print cam2._viewbox.pos
+			# print cam2._viewbox.margin
+			center_x = cam2._viewbox.pos[0] + cam2._viewbox.size[0]/2
+			center_y = cam2._viewbox.pos[1] + cam2._viewbox.size[1]/2
+			print str(cam2.get_state())
 			print (center_x,center_y)
 
-			if cam._event_value is None or len(cam._event_value) == 2:
-				cam._event_value = cam.center
-			if pos[0] < cam._viewbox.pos[0] + cam._viewbox.size[0] and pos[1] < cam._viewbox.pos[1] + cam._viewbox.size[1]:
+			if cam2._event_value is None or len(cam2._event_value) == 2:
+				cam2._event_value = cam2.center
+			if is_in_view(pos, cam2):
 				dist = pos - (center_x, center_y)
 				dist[1] *= -1
 				# Black magic part 1: turn 2D into 3D translations
-				x,y,z = pos2d_to_pos3d(dist,cam)
+				x,y,z = pos2d_to_pos3d(dist,cam2)
 				# Black magic part 2: scale for mapping exact mouse event pos
-				scale = 1.48 * cam._scale_factor / init_scale_factor
+				scale = 1.48 * cam2._scale_factor / init_scale_factor
 				# Black magic part 3: take up-vector and flipping into account
-				c = cam.center
-				ff = cam._flip_factors
-                up, forward, right = cam._get_dim_vectors()
+				c = cam2.center
+				ff = cam2._flip_factors
+                up, forward, right = cam2._get_dim_vectors()
                 x, y, z = right * x + forward * y + up * z
                 x, y, z = ff[0] * x, ff[1] * y, z * ff[2]
                 x,y,z = c[0] + scale*x, c[1] + scale*y, c[2] + scale*z
