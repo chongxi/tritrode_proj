@@ -1,6 +1,7 @@
 from vispy.scene import SceneCanvas
 from vispy import app, scene
 from vispy.io import load_data_file, read_png
+from vispy.geometry.generation import create_sphere
 import numpy as np
 
 
@@ -56,7 +57,22 @@ def add_legend(view, label_str, color):
 	hspacer2.stretch = (4, 1)
 	boxgrid.add_widget(hspacer2, row=0, col=1)
 
-###############################################################
+################## scalar field generator ##################
+
+## Define a scalar field from which we will generate an isosurface
+def psi(i, j, k, center=(128, 128, 128)):
+    x = i-center[0]
+    y = j-center[1]
+    z = k-center[2]
+    r = (x**2 + y**2 + z**2)
+    field = np.exp(-r/(7**2))
+    return field
+
+# np.fromfunction:
+# The resulting data array has a value fn(x, y, z) at coordinate (x, y, z).
+sensor_pos = np.abs(np.fromfunction(psi, (256, 256, 256)))
+
+##################### color table ######################
 
 colors = [(1,0,0),
           (0,0,0),
@@ -116,11 +132,43 @@ print vol.shape
 volume = scene.Volume(vol, parent=view2.scene, threshold=0.225,
                                emulate_texture=True)
 # volume.transform = scene.STTransform(translate=(0, 0, 200))
-scene.visuals.XYZAxis(parent=view2.scene)
+# scene.visuals.XYZAxis(parent=view2.scene)
 view2.camera = scene.TurntableCamera(parent=view2.scene)
 view2.camera.set_range()
+view2.camera.elevation = 0
+view2.camera.azimuth = 0
+init_scale_factor = view2.camera._scale_factor
 
-##################### To Do: Experiment position added to view2#####################
+################ Isolines animation added to view2 ################
+sensor_pos = (110,90,128)
+radius = 2
+cols = 10
+rows = 10
+
+amination_alpha = 1
+iso = scene.Isoline(parent=view2.scene)
+iso.set_color((0,1,1,amination_alpha))
+iso.transform = scene.transforms.STTransform(translate=sensor_pos)
+
+def sensor_animation(ev):
+    global radius, amination_alpha
+    radius += 2
+    amination_alpha -= 0.4
+    if radius > 7:
+        radius = 2
+        amination_alpha = 1
+    mesh = create_sphere(cols, rows, radius=radius)
+    vertices = mesh.get_vertices()
+    tris = mesh.get_faces()
+    nbr_level = 20
+    cl = np.linspace(-radius, radius, nbr_level+2)[1:-1]
+    iso.set_data(vertices=vertices, tris=tris, data=vertices[:, 2])
+    iso.levels=cl
+    iso.set_color((0,1,1,amination_alpha))
+
+timer2 = app.Timer()
+timer2.connect(sensor_animation)
+timer2.start(0.15)
 
 
 ##################### Line1 add to view3 #####################
@@ -179,7 +227,6 @@ add_legend(view3, 'Intracellular(mV)', 'w')
 add_legend(view4, 'Extracellular(uV)', 'w')
 
 
-
 ##################### Timer to update #####################
 step = 0.02
 play_status = False
@@ -222,7 +269,7 @@ def play_start(timer1):
 
 @canvas.connect
 def on_key_press(event):
-	global play_status, step, view_to_play
+	global play_status, step, view_to_play, line1
 	if event.text == ' ' and play_status == False:
 		xlim = get_xlim(view_to_play)
 		step  = (xlim[1]-xlim[0])/20.0
@@ -249,11 +296,74 @@ def on_key_press(event):
 		ylim = get_ylim(view_to_play)
 		print ylim
 		# print get_ylim(view_to_play)
- 
+	elif event.text == 'n':
+		N = 1000
+		pos = np.zeros((N,2), dtype=np.float)
+		pos[:,0] = np.linspace(0, 12, N)
+		pos[:,1] = np.cos(pos[:,0]) + np.random.randn(len(pos[:,0]))
+		line1.set_data(pos=pos)
+		view_to_play.camera.set_range((0,pos[-1,0]))
+	elif event.text == 'z':
+		print view2.camera.azimuth
+		print view2.camera.elevation
+		print view2.camera.roll
+		print view2.camera.distance
+
 @canvas.connect
 def on_mouse_double_click(event):
 	global view_to_play
-	view_to_play.camera.set_range()
+	print event.pos
+	view2.camera.set_range()
+	view3.camera.set_range()
+
+def pos2d_to_pos3d(dist, cam):
+    """Convert mouse x, y movement into x, y, z translations"""
+    rae = np.array([cam.roll, cam.azimuth, cam.elevation]) * np.pi / 180
+    sro, saz, sel = np.sin(rae)
+    cro, caz, cel = np.cos(rae)
+    print rae
+    dx = (+ dist[0] * (cro * caz + sro * sel * saz)
+          + dist[1] * (sro * caz - cro * sel * saz))
+    dy = (+ dist[0] * (cro * saz - sro * sel * caz)
+          + dist[1] * (sro * saz + cro * sel * caz))
+    dz = (- dist[0] * sro * cel + dist[1] * cro * cel)
+    return dx, dy, dz
+
+@canvas.connect
+def on_mouse_press(event):
+	modifiers = event.modifiers
+	button = event.button
+	pos = event.pos
+	if modifiers is not ():
+		mod = [key.name for key in event.modifiers]
+		if mod == ['Control']:
+			print(mod,button,pos)
+			cam = view2.camera
+			# print cam._viewbox.size
+			# print cam._viewbox.pos
+			# print cam._viewbox.margin
+			center_x = cam._viewbox.pos[0] + cam._viewbox.size[0]/2
+			center_y = cam._viewbox.pos[1] + cam._viewbox.size[1]/2
+			print str(cam.get_state())
+			print (center_x,center_y)
+
+			if cam._event_value is None or len(cam._event_value) == 2:
+				cam._event_value = cam.center
+			if pos[0] < cam._viewbox.pos[0] + cam._viewbox.size[0] and pos[1] < cam._viewbox.pos[1] + cam._viewbox.size[1]:
+				dist = pos - (center_x, center_y)
+				dist[1] *= -1
+				# Black magic part 1: turn 2D into 3D translations
+				x,y,z = pos2d_to_pos3d(dist,cam)
+				# Black magic part 2: scale for mapping exact mouse event pos
+				scale = 1.48 * cam._scale_factor / init_scale_factor
+				# Black magic part 3: take up-vector and flipping into account
+				c = cam.center
+				ff = cam._flip_factors
+                up, forward, right = cam._get_dim_vectors()
+                x, y, z = right * x + forward * y + up * z
+                x, y, z = ff[0] * x, ff[1] * y, z * ff[2]
+                x,y,z = c[0] + scale*x, c[1] + scale*y, c[2] + scale*z
+                iso.transform = scene.transforms.STTransform(translate=(x,y,z))
 
 timer1 = app.Timer()
 timer1.connect(play_trace)
