@@ -64,6 +64,29 @@ def is_in_view(event_pos, cam):
 	inview = is_in_xrange and is_in_yrange
 	return inview
 
+def get_center_of_view(cam):
+	center_x = cam._viewbox.pos[0] + cam._viewbox.size[0]/2
+	center_y = cam._viewbox.pos[1] + cam._viewbox.size[1]/2
+	c = (center_x, center_y)
+	return c
+
+##################### 2d mouse event to 3d coordinate #####################
+def pos2d_to_pos3d(pos, cam):
+    """Convert mouse event pos:(x, y) into x, y, z translations"""
+    """dist is the distance between (x,y) and (cx, cy) of cam"""
+    center = get_center_of_view(cam)
+    dist = pos - center
+    dist[1] *= -1
+    rae = np.array([cam.roll, cam.azimuth, cam.elevation]) * np.pi / 180
+    sro, saz, sel = np.sin(rae)
+    cro, caz, cel = np.cos(rae)
+    dx = (+ dist[0] * (cro * caz + sro * sel * saz)
+	      + dist[1] * (sro * caz - cro * sel * saz))
+    dy = (+ dist[0] * (cro * saz - sro * sel * caz)
+	      + dist[1] * (sro * saz + cro * sel * caz))
+    dz = (- dist[0] * sro * cel + dist[1] * cro * cel)
+    return dx, dy, dz
+
 ##################### get xlim and ylim from a view #####################
 def get_xlim(view):
 	_xlim = np.array([0.0,0.0])
@@ -76,20 +99,6 @@ def get_ylim(view):
 	_ylim[0] = view.camera.get_state()['rect']._pos[1]
 	_ylim[1] = _ylim[0] + view.camera.get_state()['rect']._size[1]
 	return _ylim
-
-##################### 2d mouse event to 3d coordinate #####################
-def pos2d_to_pos3d(dist, cam):
-    """Convert mouse x, y movement into x, y, z translations"""
-    rae = np.array([cam.roll, cam.azimuth, cam.elevation]) * np.pi / 180
-    sro, saz, sel = np.sin(rae)
-    cro, caz, cel = np.cos(rae)
-    print rae
-    dx = (+ dist[0] * (cro * caz + sro * sel * saz)
-          + dist[1] * (sro * caz - cro * sel * saz))
-    dy = (+ dist[0] * (cro * saz - sro * sel * caz)
-          + dist[1] * (sro * saz + cro * sel * caz))
-    dz = (- dist[0] * sro * cel + dist[1] * cro * cel)
-    return dx, dy, dz
 
 ################## scalar field generator ##################
 ## Define a scalar field from which we will generate an isosurface
@@ -333,10 +342,12 @@ def on_key_press(event):
 		view_to_play.camera.set_range((0,pos[-1,0]))
 	elif event.text == 'z':
 		view2.camera.orbit(azim=5,elev=0)
-		print('(azimuth=%f), (elevation=%f)' % (view2.camera.azimuth, view2.camera.elevation))
+		print('(azimuth=%f), (elevation=%f)' 
+			% (view2.camera.azimuth, view2.camera.elevation))
 	elif event.text == 'Z':
 		view2.camera.orbit(azim=-5,elev=0)
-		print('(azimuth=%f), (elevation=%f)' % (view2.camera.azimuth, view2.camera.elevation))
+		print('(azimuth=%f), (elevation=%f)' 
+			% (view2.camera.azimuth, view2.camera.elevation))
 
 ##################### mouse press event #####################
 
@@ -361,17 +372,13 @@ def on_mouse_press(event):
 			# print cam2._viewbox.size
 			# print cam2._viewbox.pos
 			# print cam2._viewbox.margin
-			center_x = cam2._viewbox.pos[0] + cam2._viewbox.size[0]/2
-			center_y = cam2._viewbox.pos[1] + cam2._viewbox.size[1]/2
-			print str(cam2.get_state())
+			# print str(cam2.get_state())
 
-			if cam2._event_value is None or len(cam2._event_value) == 2:
-				cam2._event_value = cam2.center
+			# if cam2._event_value is None or len(cam2._event_value) == 2:
+			# 	cam2._event_value = cam2.center
 			if is_in_view(pos, cam2) == True:
-				dist = pos - (center_x, center_y)
-				dist[1] *= -1
 				# Black magic part 1: turn 2D into 3D translations
-				x,y,z = pos2d_to_pos3d(dist,cam2)
+				x,y,z = pos2d_to_pos3d(pos,cam2)
 				# Black magic part 2: scale for mapping exact mouse event pos
 				scale = 1.48 * cam2._scale_factor / init_scale_factor
 				# Black magic part 3: take up-vector and flipping into account
