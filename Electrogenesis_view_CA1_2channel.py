@@ -208,15 +208,87 @@ view = (view1,view2,view3,view4,view5,view6,view7)
 ##################### Data and Meta-data #####################
 import igor.igorpy as igor
 igor.ENCODING = 'UTF-8'
-datum = {}
+ 
+###############################################################
+
+# L23 09-28
+# recording a circle around cell indicate no radius
+
+exp_path = './data/2015-09-28/'
+igo_path = './data/2015-09-28/l23-c1-1.pxp'
+img_path = './data/2015-09-28/L23_c1/'
+img_3d_name = 'c1_3d.npy'
+_clim=(50,200)
+
+###############################################################
+# CA1 09-28 
+# CA1 big signal at axon
+# Dendrite cable 
+# s4: 15um=> 0.17
+# s3: 15um=> 0.28
+# s2: 16um=> 1 (closer to axon)
+# s5: 5um => 0.78 (far from axon)
+# a8: bouton
+# a9->a4 decreasing
+# d1<=>s3 cable > soma
+
+# exp_path = './data/2015-09-28/'
+# igo_path = './data/2015-09-28/CA1_c1.pxp'
+# img_path = './data/2015-09-28/CA1_c1/'
+# img_3d_name = 'c1_3d.npy'
+# _clim=(100,1000)
+###############################################################
+
+# CA1 09-29
+# trace dendrite down to 42um: rate: 1
+# 1. waveform polarity
+# 2. cable dependent
+# 3. soma dcrease much faster: d4<=>s4
+
+# exp_path = './data/2015-09-29/'
+# igo_path = './data/2015-09-29/CA1c2.pxp'
+# img_path = './data/2015-09-29/CA1c2/'
+# img_3d_name = 'c1_3d.npy'
+# _clim=(100,500)
+
+###############################################################
+# giant spikes from other cells
+# this cell has perfect intracellular firing but very weak EAP
+# CA1 09-30: population imaging
 # exp_path = './data/2015-09-30/'
-# igo_path = './data/2015-09-30/CA1c2-1.pxp'
+# igo_path = './data/2015-09-30/CA1c2-2.pxp'
 # img_path = './data/2015-09-30/CA1c2/'
-exp_path = './data/2015-10-05/'
-igo_path = './data/2015-10-05/CA1c1_axondendrite.pxp'
-img_path = './data/2015-10-05/CA1c1/'
+# img_3d_name = 'c2_3d.npy'
+# _clim=(100,500)
+
+###############################################################
+
+# CA1 10-05 
+# both axon and dendrite
+# s1: 14um no signal. 
+# ad6: axon 2 peaks. delay between axon EAP and dendrite EAP
+# s2: 500uV from other cell, only show up in right channel, while the second
+# channel is just 25um away. where is Volume conduction?
+# exp_path = './data/2015-10-05/'
+# igo_path = './data/2015-10-05/CA1c1_axondendrite.pxp'
+# img_path = './data/2015-10-05/CA1c1/'
+# img_3d_name = 'c1_3d.npy'
+# _clim=(50,500)
+
+# m_test
+# exp_path = './data/2015-10-02/'
+# igo_path = './data/2015-10-02/m_test.pxp'
+# img_path = './data/2015-10-02/m_test/'
+# img_3d_name = 'c1_3d.npy'
+# _clim=(50,1500)
+
+
+
+
 
 global id_legend, _id, t, intra_trace, extra_trace, img_fname
+datum = {}
+log = {}
 
 print('Experiment path @ %s' % exp_path)
 
@@ -230,7 +302,32 @@ import os
 print('loading imaging @ %s' % img_path)
 for filename in os.listdir(img_path):
     if filename.endswith(".tiff"):
-        datum[filename.split('_')[0]] = [filename]
+        datum[filename.split('_')[0].lower()] = [filename]
+
+# log and mpp
+print('loading logs @ %s' % img_path)
+for filename in os.listdir(img_path):
+    if filename.endswith(".log"):
+        log[filename.split('_')[0].lower()] = [filename]
+
+# generate mpp
+import re
+for _id in log.keys():
+    if _id in _id_igor:
+        infile = img_path+log[_id][0]
+        with open(infile) as f:
+            f = f.readlines()
+            for line in f:
+                if 'Microns Per Pixel' in line:
+                    mpp = re.findall('Microns Per Pixel: ([\d.]+)', line)
+                    log[_id].append(mpp)
+    else:
+        log.pop(_id)
+
+# function to get mpp
+def get_mpp(_id):
+	mpp = float(log[_id][1][0])
+	return mpp
 
 # datum is dictionary contains tiff and igor waveform
 print('integrating imaging and electrophysiology')
@@ -245,7 +342,7 @@ for keys,values in datum.items():
     print(values)
 
 # 3d volume data (neuron morphology)
-vol = np.load(img_path+'c1_3d.npy')
+vol = np.load(img_path+img_3d_name)
 vol = np.flipud(np.swapaxes(vol, 0, 1))
 print('loaded volume shape:' , vol.shape)
 
@@ -273,8 +370,9 @@ def extract_data(i):
 		intra_trace,t_d = resample(intra_trace, intra_trace.shape[0]/N, t)
 		extra_trace,t_d = resample(extra_trace, extra_trace.shape[0]/N, t)
 		t = t_d
+		print 'estimated fs ',1/(t[2]-t[1])
 		###################### filtering process #####################
-		fs = 40000.0/N
+		fs = np.ceil(1/(t[2]-t[1]))
 		print('sampling frequency %f' % fs)
 		b, a = butter_bandpass(200,3000,fs,6)
 		extra_trace = filtfilt(b, a, extra_trace.T, padlen=150, padtype="even")
@@ -297,7 +395,7 @@ measure_line.visible = False
 # img_data = read_png(load_data_file('mona_lisa/mona_lisa_sm.png'))
 img_data = imread(fname=img_fname)
 print('loaded 2P imaging shape', img_data.shape)
-image = scene.visuals.Image(img_data, parent=view1.scene, cmap='grays') #,clim=(100,2000)
+image = scene.visuals.Image(img_data, parent=view1.scene, cmap='grays', clim=_clim) #,clim=(100,2000)
 view1.camera = scene.PanZoomCamera(aspect=1)
 view1.camera.flip = (0,1,0)
 view1.camera.set_range()
@@ -308,8 +406,8 @@ view1_text.font_size = 14
 view1_text.pos = (50,50)
 view1_text.text = _id
 
-measure_text = scene.Text(parent=view1.scene, color=_colors[2])
-measure_text.font_size = 8
+measure_text = scene.Text(parent=view1.scene, color='g')
+measure_text.font_size = 10
 measure_text.pos = (0,0)
 measure_text.visible = False
 
@@ -336,12 +434,13 @@ def on_mouse_move(event):
 				# print pos_
 				measure_line.set_data(pos=pos_)
 				measure_line.visible = True
-				d = norm(pos_[1,:]-pos_[0,:])
-				print 'distance =',d
+				d_pixel = norm(pos_[1,:]-pos_[0,:])
+				d_um = d_pixel*get_mpp(_id)
+				print 'distance =',d_um
 				measure_text.visible = True
-				measure_text.text = "%.2f" % d
-				measure_text.pos = (pos_[0,:] + pos_[1,:])/2
-				measure_text.pos[0] += 23 
+				measure_text.text = '%.2f um' % d_um
+				measure_text.pos = pos_[1,:]
+				measure_text.pos[0] -= 10
 				event.handled = True
 
 		# arr = np.array([(200, 0), (0, 200)])
@@ -352,8 +451,7 @@ def on_mouse_move(event):
 # vol = np.flipud(np.swapaxes(vol, 0, 1))
 # print vol.shape
 
-clim = [600, 1000]
-volume = scene.Volume(vol, parent=view2.scene, clim=clim,
+volume = scene.Volume(vol, parent=view2.scene, clim=_clim,
 				      emulate_texture=True)
 # volume.transform = scene.STTransform(translate=(0, 0, 200))
 # scene.visuals.XYZAxis(parent=view2.scene)
@@ -675,12 +773,41 @@ def on_mouse_double_click(event):
 			spike_detect_rate[1], spike_No[1] = get_spk_detrate(spk_wave_extra[:,:,1], -extra_thr[1])
 			spikes_extracted = True
 		else:
-			plt.figure(facecolor='white')
-			plt.plot(spk_wave_intra.T, c=_colors[0])
+			# intra
+			plt.figure(facecolor='white', figsize=(10,10))
+			ax1 = plt.subplot(311)
+			ax1.plot(spk_wave_intra.T, c=_colors[0])
+			peak_idx = []
 			for l in spk_wave_intra:
-				plt.plot(l.argmax(), l.max(), 'ro', ms=5)
-				p = l.argmax()
+				peak_idx.append(l.argmax())
+				ax1.plot(l.argmax(), l.max(), 'ro', ms=5)
+			p = np.mean(peak_idx)
+			str_p = '%.2f' % p
 			plt.axvline(p,lw=2,ls='-.',c='m')
+			plt.text(p,0,str_p,rotation=90)
+			# axon
+			ax2 = plt.subplot(312)
+			ax2.plot(spk_wave_extra[:,:,0].T, c=_colors[1])
+			peak_idx = []
+			for l in spk_wave_extra[:,:,0]:
+				peak_idx.append(l.argmin())
+				ax2.plot(l.argmin(), l.min(), 'go', ms=5)
+			p = np.mean(peak_idx)
+			str_p = '%.2f' % p
+			plt.axvline(p,lw=2,ls='-.',c='m')
+			plt.text(p,0,str_p,rotation=90)
+			# den
+			ax3 = plt.subplot(313)
+			ax3.plot(spk_wave_extra[:,:,1].T, c=_colors[2])
+			peak_idx = []
+			for l in spk_wave_extra[:,:,1]:
+				peak_idx.append(l.argmin())
+				ax3.plot(l.argmin(), l.min(), 'ro', ms=5)
+			p = np.mean(peak_idx)
+			str_p = '%.2f' % p
+			plt.axvline(p,lw=2,ls='-.',c='m')
+			plt.text(p,0,str_p,rotation=90)
+			# show()
 			plt.show()
 	elif is_in_view(event.pos, view4.camera):
 		if spikes_extracted == False:
@@ -749,25 +876,25 @@ def on_mouse_press(event):
 
 ##################### Mouse move event, current view #####################
 
-# current_view = view1
-# @canvas.connect
-# def on_mouse_move(event):
-# 	global current_view
-# 	current_view = in_which_view(event.pos, view)
-# 	# print str(current_view)
-# 	for _v in view:
-# 		if _v is current_view:
-# 			_v._border_width = 1
-# 			_v._update_child_widgets()
-# 			_v._update_line()
-# 			_v.update()
-# 			_v.events.resize()
-# 		else:
-# 			_v._border_width = 0
-# 			_v._update_child_widgets()
-# 			_v._update_line()
-# 			_v.update()
-# 			_v.events.resize()			
+current_view = view1
+@canvas.connect
+def on_mouse_move(event):
+	global current_view
+	current_view = in_which_view(event.pos, view)
+	# print str(current_view)
+	for _v in view:
+		if _v is current_view:
+			_v._border_width = 1
+			_v._update_child_widgets()
+			_v._update_line()
+			_v.update()
+			_v.events.resize()
+		else:
+			_v._border_width = 0
+			_v._update_child_widgets()
+			_v._update_line()
+			_v.update()
+			_v.events.resize()			
 
 
 ##################### Mouse wheel, changing data #####################
@@ -786,8 +913,8 @@ def update(i):
 	line2.set_data(pos=trace2)
 	trace3 = np.vstack((t, extra_trace[:,1])).T
 	line3.set_data(pos=trace3)
-	view4.camera.set_range((0,trace1[-1,0]))
-	view4.camera.zoom(1.1, view3.camera.center)
+	# view4.camera.set_range((0,trace1[-1,0]))
+	# view4.camera.zoom(1.1, view3.camera.center)
 	# update image
 	img_data = imread(fname=img_fname)
 	image.set_data(img_data)
